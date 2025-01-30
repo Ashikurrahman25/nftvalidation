@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import cors from 'cors';
 
 dotenv.config();
 
@@ -153,7 +154,3 @@ app.post('/check-nft-ownership', express.json(), async (req: Request, res: Respo
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
 });
-function cors(arg0: { origin: string; }): any {
-  throw new Error('Function not implemented.');
-}
-
