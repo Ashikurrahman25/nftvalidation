@@ -18,6 +18,7 @@ const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = 3000;
+app.use(cors({ origin: 'https://spearonnear.github.io' }));
 const API_KEY = process.env.MB_API_KEY;
 app.get('/nfts/:wallet', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const walletAddress = req.params.wallet;
@@ -135,3 +136,6 @@ app.post('/check-nft-ownership', express_1.default.json(), (req, res) => __await
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
+function cors(arg0) {
+    throw new Error('Function not implemented.');
+}

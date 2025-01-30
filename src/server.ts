@@ -6,6 +6,7 @@ dotenv.config();
 
 const app = express();
 const port = 3000;
+app.use(cors({ origin: 'https://spearonnear.github.io' }));
 
 interface NFTToken {
   nft_contract_id: string;
@@ -152,3 +153,7 @@ app.post('/check-nft-ownership', express.json(), async (req: Request, res: Respo
 app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
 });
+function cors(arg0: { origin: string; }): any {
+  throw new Error('Function not implemented.');
+}
+
