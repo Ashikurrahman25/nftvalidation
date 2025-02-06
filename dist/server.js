@@ -19,7 +19,9 @@ const cors_1 = __importDefault(require("cors"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = 3000;
-app.use((0, cors_1.default)({ origin: 'https://spearonnear.github.io' }));
+app.use((0, cors_1.default)({
+    origin: ['https://spearonnear.github.io', 'https://game.spearonnear.com']
+}));
 const API_KEY = process.env.MB_API_KEY;
 app.get('/nfts/:wallet', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const walletAddress = req.params.wallet;
