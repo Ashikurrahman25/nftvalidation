@@ -7,7 +7,9 @@ dotenv.config();
 
 const app = express();
 const port = 3000;
-app.use(cors({ origin: 'https://spearonnear.github.io' }));
+app.use(cors({
+  origin: ['https://spearonnear.github.io', 'https://game.spearonnear.com']
+}));
 
 interface NFTToken {
   nft_contract_id: string;
