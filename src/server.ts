@@ -1,158 +1,177 @@
-import express, { Request, Response } from 'express';
-import axios from 'axios';
+// nftEndpoint.ts
+import express from 'express';
+import { connect, keyStores } from 'near-api-js';
 import dotenv from 'dotenv';
-import cors from 'cors';
 
+// Load environment variables
 dotenv.config();
 
 const app = express();
-const port = 3000;
-app.use(cors({
-  origin: ['https://spearonnear.github.io', 'https://game.spearonnear.com']
-}));
+const PORT = process.env.PORT || 3000;
 
-interface NFTToken {
-  nft_contract_id: string;
-  token_id: string;
-  metadata_id: string;
-  title: string;
-  description: string;
-  media: string;
-}
+// Middleware to parse JSON payloads
+app.use(express.json());
 
-interface MintbaseResponse {
-  data: {
-    mb_views_nft_tokens: NFTToken[];
-  };
-}
+// Dynamic network configuration based on environment variable
+const NETWORK = process.env.NEAR_NETWORK || 'testnet';
 
-const API_KEY = process.env.MB_API_KEY as string;
-
-app.get('/nfts/:wallet', async (req: Request, res: Response) => {
-  const walletAddress: string = req.params.wallet;
-  const query: string = `
-  {
-    mb_views_nft_tokens(
-      where: {owner: {_eq: "${walletAddress}"}}
-    ) {
-      nft_contract_id
-      token_id
-      metadata_id
-      title
-      description
-      media
-    }
+const getNetworkConfig = () => {
+  if (NETWORK === 'mainnet') {
+    return {
+      networkId: 'mainnet',
+      nodeUrl: 'https://rpc.mainnet.near.org',
+      walletUrl: 'https://wallet.near.org',
+      helperUrl: 'https://helper.mainnet.near.org',
+      explorerUrl: 'https://explorer.near.org',
+      keyStore: new keyStores.InMemoryKeyStore(),
+    };
+  } else {
+    return {
+      networkId: 'testnet',
+      nodeUrl: 'https://rpc.testnet.near.org',
+      walletUrl: 'https://wallet.testnet.near.org',
+      helperUrl: 'https://helper.testnet.near.org',
+      explorerUrl: 'https://explorer.testnet.near.org',
+      keyStore: new keyStores.InMemoryKeyStore(),
+    };
   }
-  `;
+};
+
+const nearConfig = getNetworkConfig();
+
+console.log(`🌐 Using NEAR ${NETWORK.toUpperCase()} network`);
+
+// List of known NFT contracts (you can expand this)
+const knownNFTContracts = [
+  'sharddoggies.testnet',
+  'dev-1675486904766-77262865372547'
+];
+
+app.get('/nfts/:accountId', async (req, res) => {
+  const { accountId } = req.params;
 
   try {
-    const response = await axios.post<MintbaseResponse>('https://graph.mintbase.xyz/mainnet', {
-      query,
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'mb-api-key': API_KEY,
-      },
-    });
+    const near = await connect(nearConfig);
+    const account = await near.account(accountId);
 
-    const tokens = response.data.data.mb_views_nft_tokens;
+    const allNFTs = [];
 
-    // Aggregate NFTs by contract ID
-    const aggregatedTokens: { [key: string]: { contract: string, quantity: number, nft_meta: any } } = {};
+    for (const contractId of knownNFTContracts) {
+      try {
+        const tokens: any[] = await account.viewFunction({
+          contractId,
+          methodName: 'nft_tokens_for_owner',
+          args: { account_id: accountId, from_index: '0', limit: 50 },
+        });
 
-    tokens.forEach(token => {
-      if (!aggregatedTokens[token.nft_contract_id]) {
-        aggregatedTokens[token.nft_contract_id] = {
-          contract: token.nft_contract_id,
-          quantity: 0,
-          nft_meta: {
-            name: token.title,
-            symbol: "SymbolPlaceholder", // Replace with actual symbol if available
-            icon: token.media,
-            reference: `https://arweave.net/${token.metadata_id}`
-          }
-        };
+        allNFTs.push(...tokens.map(token => ({ ...token, contract: contractId })));
+      } catch (err:any) {
+        console.warn(`Failed to fetch from ${contractId}:`, err.message);
       }
-      aggregatedTokens[token.nft_contract_id].quantity++;
-    });
+    }
 
-    // Convert aggregatedTokens object to an array
-    const formattedTokens = Object.values(aggregatedTokens);
-
-    res.json(formattedTokens);
-  } catch (error) {
-    console.error('Error fetching NFTs:', error);
-    res.status(500).send('Error fetching NFTs');
+    res.json(allNFTs);
+  } catch (error:any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-// New endpoint to return all unique NFT contracts as an array
-app.get('/nft-contracts/:wallet', async (req: Request, res: Response) => {
-  const walletAddress: string = req.params.wallet;
-  const query: string = `
-  {
-    mb_views_nft_tokens(
-      where: {owner: {_eq: "${walletAddress}"}}
-    ) {
-      nft_contract_id
-    }
+// Endpoint to get NFTs with custom contract list
+app.post('/nfts/fetch', async (req, res) => {
+  const { walletId, contracts } = req.body;
+
+  if (!walletId || !contracts || !Array.isArray(contracts)) {
+    return res.status(400).json({ 
+      error: 'walletId and contracts array are required' 
+    });
   }
-  `;
 
   try {
-    const response = await axios.post<MintbaseResponse>('https://graph.mintbase.xyz/mainnet', {
-      query,
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'mb-api-key': API_KEY,
-      },
+    const near = await connect(nearConfig);
+    const account = await near.account(walletId);
+
+    const allNFTs = [];
+
+    for (const contractId of contracts) {
+      try {
+        const tokens: any[] = await account.viewFunction({
+          contractId,
+          methodName: 'nft_tokens_for_owner',
+          args: { account_id: walletId, from_index: '0', limit: 50 },
+        });
+
+        allNFTs.push(...tokens.map(token => ({ ...token, contract: contractId })));
+      } catch (err: any) {
+        console.warn(`Failed to fetch from ${contractId}:`, err.message);
+      }
+    }
+
+    res.json({
+      walletId,
+      nfts: allNFTs,
+      totalCount: allNFTs.length
     });
-
-    const tokens = response.data.data.mb_views_nft_tokens;
-    const uniqueContracts = Array.from(new Set(tokens.map(token => token.nft_contract_id)));
-
-    res.json(uniqueContracts);
-  } catch (error) {
-    console.error('Error fetching NFT contracts:', error);
-    res.status(500).send('Error fetching NFT contracts');
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-// New endpoint to check if any of the given NFT contracts are owned by the wallet
-app.post('/check-nft-ownership', express.json(), async (req: Request, res: Response) => {
-  const { walletAddress, contracts }: { walletAddress: string, contracts: string[] } = req.body;
-  const query: string = `
-  {
-    mb_views_nft_tokens(
-      where: {owner: {_eq: "${walletAddress}"}}
-    ) {
-      nft_contract_id
-    }
+// Endpoint to check if wallet has NFTs from any of the specified contracts
+app.post('/nfts/check-status', async (req, res) => {
+  const { walletId, contracts } = req.body;
+
+  if (!walletId || !contracts || !Array.isArray(contracts)) {
+    return res.status(400).json({ 
+      error: 'walletId and contracts array are required' 
+    });
   }
-  `;
 
   try {
-    const response = await axios.post<MintbaseResponse>('https://graph.mintbase.xyz/mainnet', {
-      query,
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'mb-api-key': API_KEY,
-      },
+    const near = await connect(nearConfig);
+    const account = await near.account(walletId);
+
+    let hasNFTs = false;
+    const contractResults = [];
+
+    for (const contractId of contracts) {
+      try {
+        const tokens: any[] = await account.viewFunction({
+          contractId,
+          methodName: 'nft_tokens_for_owner',
+          args: { account_id: walletId, from_index: '0', limit: 1 },
+        });
+
+        const hasTokensInContract = tokens.length > 0;
+        contractResults.push({
+          contract: contractId,
+          hasNFTs: hasTokensInContract,
+          count: tokens.length
+        });
+
+        if (hasTokensInContract) {
+          hasNFTs = true;
+        }
+      } catch (err: any) {
+        console.warn(`Failed to check ${contractId}:`, err.message);
+        contractResults.push({
+          contract: contractId,
+          hasNFTs: false,
+          error: err.message
+        });
+      }
+    }
+
+    res.json({
+      walletId,
+      hasNFTs,
+      details: contractResults
     });
-
-    const tokens = response.data.data.mb_views_nft_tokens;
-    const ownedContracts = new Set(tokens.map(token => token.nft_contract_id));
-    const hasOwnership = contracts.some(contract => ownedContracts.has(contract));
-
-    res.json({ hasOwnership });
-  } catch (error) {
-    console.error('Error checking NFT ownership:', error);
-    res.status(500).send('Error checking NFT ownership');
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+app.listen(PORT, () => {
+  console.log(`🚀 NFT API running at http://localhost:${PORT}`);
+  console.log(`📡 Connected to NEAR ${NETWORK} network`);
 });
